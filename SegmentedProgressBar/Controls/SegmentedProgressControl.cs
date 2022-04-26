@@ -2,6 +2,7 @@
 
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -49,25 +50,37 @@ public class SegmentedProgressControl : Control
         new FrameworkPropertyMetadata(2.0, FrameworkPropertyMetadataOptions.AffectsRender));
 
     public static readonly DependencyProperty ShowScalarValueProperty = DependencyProperty.Register(
-        "ShowScalarValue", typeof(bool), typeof(SegmentedProgressControl), new FrameworkPropertyMetadata(default(bool), FrameworkPropertyMetadataOptions.AffectsRender));
+        "ShowScalarValue", typeof(bool), typeof(SegmentedProgressControl),
+        new FrameworkPropertyMetadata(default(bool), FrameworkPropertyMetadataOptions.AffectsRender));
 
     public static readonly DependencyProperty ScalarFontProperty = DependencyProperty.Register(
-        "ScalarFont", typeof(Typeface), typeof(SegmentedProgressControl), new FrameworkPropertyMetadata(new Typeface(new("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal), 
+        "ScalarFont", typeof(Typeface), typeof(SegmentedProgressControl), new FrameworkPropertyMetadata(
+            new Typeface(new("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal),
             FrameworkPropertyMetadataOptions.AffectsRender));
 
     public static readonly DependencyProperty ReserveScalarAreaWhenNonScalarProperty = DependencyProperty.Register(
-        "ReserveScalarAreaWhenNonScalar", typeof(bool), typeof(SegmentedProgressControl), new FrameworkPropertyMetadata(true, FrameworkPropertyMetadataOptions.AffectsRender));
+        "ReserveScalarAreaWhenNonScalar", typeof(bool), typeof(SegmentedProgressControl),
+        new FrameworkPropertyMetadata(true, FrameworkPropertyMetadataOptions.AffectsRender));
 
-    public bool ReserveScalarAreaWhenNonScalar
-    {
-        get { return (bool)GetValue(ReserveScalarAreaWhenNonScalarProperty); }
-        set { SetValue(ReserveScalarAreaWhenNonScalarProperty, value); }
-    }
-    
+    public static readonly DependencyProperty SmoothEndInterpolationProperty = DependencyProperty.Register(
+        "SmoothEndInterpolation", typeof(bool), typeof(SegmentedProgressControl), new(default(bool)));
+
     public SegmentedProgressControl()
     {
         this.HorizontalAlignment = HorizontalAlignment.Stretch;
         this.Height = 40;
+    }
+
+    public bool SmoothEndInterpolation
+    {
+        get => (bool)this.GetValue(SmoothEndInterpolationProperty);
+        set => this.SetValue(SmoothEndInterpolationProperty, value);
+    }
+
+    public bool ReserveScalarAreaWhenNonScalar
+    {
+        get => (bool)this.GetValue(ReserveScalarAreaWhenNonScalarProperty);
+        set => this.SetValue(ReserveScalarAreaWhenNonScalarProperty, value);
     }
 
     public Typeface ScalarFont
@@ -116,16 +129,28 @@ public class SegmentedProgressControl : Control
     {
         base.OnRender(drawingContext);
         var scalarText = this.ShowScalarValue ? this.FormattedText() : null;
-        var barWidth = (this.ShowScalarValue || this.ReserveScalarAreaWhenNonScalar) ? this.ActualWidth - 50.0 : this.ActualWidth;
+        var barWidth = this.ShowScalarValue || this.ReserveScalarAreaWhenNonScalar ? this.ActualWidth - 50.0 : this.ActualWidth;
 
         var cellSize = (barWidth - (this.SegmentCount - 1) * this.SegmentPadding) / this.SegmentCount;
 
         var x = 0.0;
         for (var i = 0; i < this.SegmentCount; i++)
         {
+            var startProgressPercentage = x / barWidth;
             var endProgressPercentage = (x + cellSize) / barWidth;
+
+            Brush cellBrush;
+            if (this.SmoothEndInterpolation && startProgressPercentage <= this.Progress && endProgressPercentage >= this.Progress)
+            {
+                cellBrush = this.GetInterpolatedBrush(startProgressPercentage, endProgressPercentage);
+            }
+            else
+            {
+                cellBrush = this.GetBrushForValue(endProgressPercentage);
+            }
+
             drawingContext.DrawRoundedRectangle(
-                this.GetBrushForValue(endProgressPercentage),
+                cellBrush,
                 null,
                 new(
                     x,
@@ -143,32 +168,49 @@ public class SegmentedProgressControl : Control
         }
     }
 
+    private Brush GetInterpolatedBrush(double startValue, double endValue)
+    {
+        var percentage = (this.Progress - startValue) / (endValue - startValue);
+        var segment = this.GetSegment(this.Progress);
+        if (segment is not { ActiveBrush: SolidColorBrush, InactiveBrush: SolidColorBrush })
+        {
+            return Brushes.Pink;
+        }
+
+        var startColourHsv = ColourUtility.ColorToHsv(((SolidColorBrush)segment.InactiveBrush).Color);
+        var endColourHsv = ColourUtility.ColorToHsv(((SolidColorBrush)segment.ActiveBrush).Color);
+        var finalColourHsv = ColourUtility.Lerp(percentage, startColourHsv, endColourHsv);
+        var finalColourRgb = ColourUtility.ColorFromHsv(finalColourHsv);
+        return new SolidColorBrush(finalColourRgb);
+    }
+
     private FormattedText FormattedText()
     {
-        return new FormattedText(
-            $"{((int)(this.Progress * 100))}%",
+        return new(
+            $"{(int)(this.Progress * 100)}%",
             CultureInfo.CurrentCulture,
             FlowDirection.LeftToRight,
             this.ScalarFont,
             16,
             this.GetBrushForValue(this.Progress),
-            new NumberSubstitution(),
+            new(),
             TextFormattingMode.Display,
             1);
     }
 
     private Brush GetBrushForValue(double value)
     {
-        foreach (var segment in this.SegmentDefinitions)
+        var segment = this.GetSegment(value);
+        if (segment != null)
         {
-            if (segment.PercentageCutOff < value)
-            {
-                continue;
-            }
-
             return this.Progress >= value ? segment.ActiveBrush : segment.InactiveBrush;
         }
 
         return Brushes.Pink;
+    }
+
+    private Segment? GetSegment(double value)
+    {
+        return this.SegmentDefinitions.FirstOrDefault(segment => !(segment.PercentageCutOff < value));
     }
 }

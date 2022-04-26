@@ -1,6 +1,7 @@
 ﻿namespace SegmentedProgressBar.Controls;
 
 using System.Collections.Generic;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -47,10 +48,38 @@ public class SegmentedProgressControl : Control
         "BorderRadius", typeof(double), typeof(SegmentedProgressControl),
         new FrameworkPropertyMetadata(2.0, FrameworkPropertyMetadataOptions.AffectsRender));
 
+    public static readonly DependencyProperty ShowScalarValueProperty = DependencyProperty.Register(
+        "ShowScalarValue", typeof(bool), typeof(SegmentedProgressControl), new FrameworkPropertyMetadata(default(bool), FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public static readonly DependencyProperty ScalarFontProperty = DependencyProperty.Register(
+        "ScalarFont", typeof(Typeface), typeof(SegmentedProgressControl), new FrameworkPropertyMetadata(new Typeface(new("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal), 
+            FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public static readonly DependencyProperty ReserveScalarAreaWhenNonScalarProperty = DependencyProperty.Register(
+        "ReserveScalarAreaWhenNonScalar", typeof(bool), typeof(SegmentedProgressControl), new FrameworkPropertyMetadata(true, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public bool ReserveScalarAreaWhenNonScalar
+    {
+        get { return (bool)GetValue(ReserveScalarAreaWhenNonScalarProperty); }
+        set { SetValue(ReserveScalarAreaWhenNonScalarProperty, value); }
+    }
+    
     public SegmentedProgressControl()
     {
         this.HorizontalAlignment = HorizontalAlignment.Stretch;
         this.Height = 40;
+    }
+
+    public Typeface ScalarFont
+    {
+        get => (Typeface)this.GetValue(ScalarFontProperty);
+        set => this.SetValue(ScalarFontProperty, value);
+    }
+
+    public bool ShowScalarValue
+    {
+        get => (bool)this.GetValue(ShowScalarValueProperty);
+        set => this.SetValue(ShowScalarValueProperty, value);
     }
 
     public double BorderRadius
@@ -86,12 +115,15 @@ public class SegmentedProgressControl : Control
     protected override void OnRender(DrawingContext drawingContext)
     {
         base.OnRender(drawingContext);
-        var cellSize = (this.ActualWidth - (this.SegmentCount - 1) * this.SegmentPadding) / this.SegmentCount;
+        var scalarText = this.ShowScalarValue ? this.FormattedText() : null;
+        var barWidth = (this.ShowScalarValue || this.ReserveScalarAreaWhenNonScalar) ? this.ActualWidth - 50.0 : this.ActualWidth;
+
+        var cellSize = (barWidth - (this.SegmentCount - 1) * this.SegmentPadding) / this.SegmentCount;
 
         var x = 0.0;
         for (var i = 0; i < this.SegmentCount; i++)
         {
-            var endProgressPercentage = (x + cellSize + this.SegmentPadding) / this.ActualWidth;
+            var endProgressPercentage = (x + cellSize + this.SegmentPadding) / barWidth;
             drawingContext.DrawRoundedRectangle(
                 this.GetBrushForValue(endProgressPercentage),
                 null,
@@ -104,6 +136,25 @@ public class SegmentedProgressControl : Control
                 this.BorderRadius);
             x += cellSize + this.SegmentPadding;
         }
+
+        if (this.ShowScalarValue)
+        {
+            drawingContext.DrawText(scalarText, new(this.ActualWidth - scalarText.Width, this.ActualHeight / 2.0 - scalarText.Height / 2.0));
+        }
+    }
+
+    private FormattedText FormattedText()
+    {
+        return new FormattedText(
+            $"{((int)(this.Progress * 100))}%",
+            CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight,
+            this.ScalarFont,
+            16,
+            this.GetBrushForValue(this.Progress),
+            new NumberSubstitution(),
+            TextFormattingMode.Display,
+            1);
     }
 
     private Brush GetBrushForValue(double value)

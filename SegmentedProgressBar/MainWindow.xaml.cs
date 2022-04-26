@@ -26,7 +26,7 @@ public partial class MainWindow : Window
 
     private void Callback(object? sender, EventArgs e)
     {
-        var newValue = this.Progress + ((this.random.NextDouble() - 0.5) / 10.0);
+        var newValue = this.Progress + (this.random.NextDouble() - 0.5) / 10.0;
         this.Progress = Math.Clamp(newValue, 0.0, 1.0);
     }
 }

@@ -123,7 +123,7 @@ public class SegmentedProgressControl : Control
         var x = 0.0;
         for (var i = 0; i < this.SegmentCount; i++)
         {
-            var endProgressPercentage = (x + cellSize + this.SegmentPadding) / barWidth;
+            var endProgressPercentage = (x + cellSize) / barWidth;
             drawingContext.DrawRoundedRectangle(
                 this.GetBrushForValue(endProgressPercentage),
                 null,
